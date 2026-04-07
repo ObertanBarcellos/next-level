@@ -10,7 +10,7 @@ Este repositório é um playground de UI/UX para dashboards. Ele reúne:
 
 - **Layout de dashboard** com menu lateral colapsável
 - **Páginas de demonstração** para cada módulo/componente
-- **Componentes reutilizáveis** (botão, input, checkbox, switch, card, calendário, data-grid, drag-and-drop, lista virtual, toast)
+- **Componentes reutilizáveis** (botão, input, checkbox, switch, card, calendário, data-grid, drag-and-drop, lista virtual, tooltip, toast)
 - **Exemplos de gráficos** com ApexCharts
 - **Infra de utilitários** para lista virtual (core, hooks, measurements)
 
@@ -26,6 +26,7 @@ app/
     virtual-list/         → Demo de listas virtuais
     drag-and-drop/        → Demo de arrastar e soltar
     data-grid/            → Demo de tabela com recursos
+    tooltip/              → Demo de tooltips
     lucide-icons/         → Catálogo de ícones Lucide
     button/               → Showcase de botões
     input/                → Showcase de inputs
@@ -43,9 +44,10 @@ src/
     switch/               → `Switch`
     card/                 → `Card` (container de conteúdo)
     calendar/             → `Calendar`
-    data-grid/            → `DataGrid`
+    data-grid/            → `DataGrid`, `DataGridControls`, `DataGridSettingsTooltipContent`, `DataGridPaginationTooltipContent`
     drag-and-drop/        → `DraggableList`
     virtual-list/         → `VirtualList`, `VirtualListAdvanced`
+    tooltip/              → `Tooltip`
     toast/                → `ToastProvider`, `index`
     menu-lateral/         → `MenuLateral`, `DashboardSidebarNav`, `DashboardSidebarShell`, `SidebarNavItem`
   core/                   → `calculateOffset`, `calculateRange` (núcleo da lista virtual)
@@ -59,13 +61,14 @@ src/
 - **Dashboard (`/dashboard`)**: galeria com 13 tipos de gráficos usando `react-apexcharts` (line, area, bar, stacked bar, pie, donut, radialBar, radar, polar area, scatter, bubble, heatmap, treemap, candlestick, boxPlot, rangeBar). Ideal para inspiração visual e validação de tema.
 - **Virtual List (`/virtual-list`)**: exemplos de listas virtuais com alto desempenho, baseadas em `core/`, `hooks/` e `measurements/`.
 - **Drag and Drop (`/drag-and-drop`)**: lista reordenável por arrastar e soltar.
-- **Data Grid (`/data-grid`)**: tabela com foco em legibilidade e escalabilidade.
+- **Data Grid (`/data-grid`)**: tabela com virtualização de linhas, filtros (incluindo intervalo de datas), colunas configuráveis, paginação opcional e ações de contexto com toast.
 - **Lucide Icons (`/lucide-icons`)**: vitrine de ícones para uso rápido.
 - **Button (`/button`)**: variações de botões (tamanhos, tons, ícones, estados).
 - **Input (`/input`)**: campos de entrada com estados e validações visuais.
 - **Calendar (`/calendar`)**: seleção de datas com UI acessível.
 - **Form Manager (`/form-manager`)**: utilitários/abordagem para formularização declarativa.
 - **Switch e Checkbox (`/switch-checkbox`)**: controles binários com foco em acessibilidade.
+- **Tooltip (`/tooltip`)**: exemplos de tooltip com conteúdo em texto e `ReactNode`, com temas claro/escuro.
 
 
 ## 🧱 Componentes Principais (src/components)
@@ -83,7 +86,10 @@ src/
   - `toast/ToastProvider`: provider/notificações.
 - **Data e Layout**
   - `calendar/Calendar`: seleção de data.
-  - `data-grid/DataGrid`: tabela.
+  - `data-grid/DataGrid`: tabela com renderização virtual de linhas.
+  - `data-grid/DataGridControls`: controle externo para visibilidade de colunas com persistência em `localStorage`.
+  - `data-grid/DataGridSettingsTooltipContent`, `data-grid/DataGridPaginationTooltipContent`: conteúdos ricos para tooltips de ações da grade.
+  - `tooltip/Tooltip`: tooltip reutilizável com posicionamento (top/bottom/left/right), conteúdo em `ReactNode` e tema `light`/`dark`.
   - `drag-and-drop/DraggableList`: lista arrastável.
   - `virtual-list/VirtualList`, `VirtualListAdvanced`: listas virtuais performáticas.
 

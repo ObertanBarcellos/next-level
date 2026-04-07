@@ -2,6 +2,7 @@
 
 import {
   CalendarDays,
+  Info,
   FileText,
   LayoutDashboard,
   List,
@@ -25,6 +26,7 @@ const DASHBOARD_LINKS = [
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/form-manager", label: "Form Manager", icon: FileText },
   { href: "/switch-checkbox", label: "Switch e Checkbox", icon: ToggleLeft },
+  { href: "/tooltip", label: "Tooltip", icon: Info },
 ] as const;
 
 interface DashboardSidebarNavProps {

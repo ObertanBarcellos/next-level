@@ -1,16 +1,17 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DataGrid,
   type DataGridColumn,
   type DataGridLocale,
   type DataGridRef,
 } from "@/src/components/data-grid/data-grid";
+import { DataGridControls } from "@/src/components/data-grid/data-grid-controls";
+import { DataGridPaginationTooltipContent } from "@/src/components/data-grid/data-grid-pagination-tooltip";
 import { DateRangePicker, type CalendarLanguage, type DateRangeValue } from "@/src/components/calendar/calendar";
 import { Button } from "@/src/components/button/button";
-import { Switch } from "@/src/components/switch/switch";
-import { Bell, CircleCheck, Lock, Shield, TriangleAlert } from "lucide-react";
+import { Bell, CircleCheck, List, Lock, Shield, TriangleAlert } from "lucide-react";
 import { useToast } from "@/src/components/toast";
 
 interface GridRow {
@@ -221,6 +222,25 @@ export default function DataGridPage() {
     [locale]
   );
 
+  // Controle de colunas visíveis para integrar com o componente externo
+  const [visibleColumnIds, setVisibleColumnIds] = useState<string[]>([]);
+
+  // Sincroniza ids visíveis ao mudar definição das colunas
+  useEffect(() => {
+    setVisibleColumnIds((prev) => {
+      const nextAll = columns.map((c) => String(c.id));
+      // Se ainda não inicializado, ou houve mudança estrutural grande, reseta para todas
+      if (prev.length === 0) return nextAll;
+      const filtered = prev.filter((id) => nextAll.includes(id));
+      return filtered.length > 0 ? filtered : nextAll;
+    });
+  }, [columns]);
+
+  const visibleColumns = useMemo(
+    () => columns.filter((c) => visibleColumnIds.includes(String(c.id))),
+    [columns, visibleColumnIds]
+  );
+
   return (
     <div className="mx-auto flex h-full w-full max-w-[1600px] min-h-0 flex-col gap-4 p-4">
       <header className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
@@ -260,11 +280,30 @@ export default function DataGridPage() {
             </Button>
           ))}
           <div className="mx-2 h-5 w-px bg-zinc-200" />
-          <Switch
-            label="Paginacao"
-            checked={enablePagination}
-            onCheckedChange={setEnablePagination}
-            checkedColor="#16a34a"
+          {/* Controles externos do DataGrid (pode ser movido para qualquer lugar da página) */}
+          <DataGridControls
+            columns={columns}
+            visibleColumnIds={visibleColumnIds}
+            onChangeVisibleColumnIds={setVisibleColumnIds}
+            locale={locale}
+            tableId="demo-data-grid"
+            extraItems={[
+              {
+                ariaLabel: enablePagination ? "Desativar paginação" : "Ativar paginação",
+                tooltipContent: <DataGridPaginationTooltipContent locale={locale} enabled={enablePagination} />,
+                icon: <List size={18} />,
+                onClick: () => {
+                  const next = !enablePagination;
+                  setEnablePagination(next);
+                  toast.info({
+                    title: next ? "Paginação ativada" : "Paginação desativada",
+                    description: next
+                      ? "A tabela agora utiliza páginas para navegação."
+                      : "A tabela exibe as linhas em fluxo contínuo.",
+                  });
+                },
+              },
+            ]}
           />
         </div>
       </header>
@@ -277,7 +316,7 @@ export default function DataGridPage() {
         <DataGrid
           ref={dataGridRef}
           data={rows}
-          columns={columns}
+          columns={visibleColumns}
           rowHeight={42}
           layoutMode="custom"
           locale={locale}
