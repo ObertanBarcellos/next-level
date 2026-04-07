@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+@keyframes toast-progress {
+  from {
+    transform: scaleX(1);
+  }
+
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sidebar-shine {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+
+  30% {
+    opacity: 0.35;
+  }
+
+  to {
+    transform: translateX(220%);
+    opacity: 0;
+  }
+}
+
+.sidebar-active-shine::before,
+.sidebar-hover-shine::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.35) 50%, transparent 100%);
+}
+
+.sidebar-active-shine::before {
+  animation: sidebar-shine 2.8s ease-in-out infinite;
+}
+
+.sidebar-hover-shine::before {
+  animation: sidebar-shine 1s ease-out 1;
+}
+
+.sidebar-background-grain {
+  background-image:
+    radial-gradient(circle at 10% 20%, rgba(255, 255, 255, 0.12) 0%, transparent 34%),
+    radial-gradient(circle at 85% 20%, rgba(125, 211, 252, 0.22) 0%, transparent 28%),
+    radial-gradient(circle at 60% 80%, rgba(167, 139, 250, 0.2) 0%, transparent 28%);
+}
