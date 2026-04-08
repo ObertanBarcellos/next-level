@@ -11,7 +11,7 @@ import { DataGridControls } from "@/src/components/data-grid/data-grid-controls"
 import { DataGridPaginationTooltipContent } from "@/src/components/data-grid/data-grid-pagination-tooltip";
 import { DateRangePicker, type CalendarLanguage, type DateRangeValue } from "@/src/components/calendar/calendar";
 import { Button } from "@/src/components/button/button";
-import { Bell, CircleCheck, Filter, FilterX, List, Lock, Shield, TriangleAlert } from "lucide-react";
+import { Bell, CircleCheck, List, Lock, Shield, TriangleAlert } from "lucide-react";
 import { useToast } from "@/src/components/toast";
 
 interface GridRow {
@@ -283,19 +283,11 @@ export default function DataGridPage() {
             onChangeVisibleColumnIds={(nextIds) => setVisibleColumnIds(nextIds)}
             pinnedColumnIds={resolvedPinnedColumnIds}
             onChangePinnedColumnIds={setPinnedColumnIds}
+            onToggleFilters={() => dataGridRef.current?.toggleFilters()}
+            onClearFilters={() => dataGridRef.current?.clearFilters()}
             locale={locale}
             tableId="demo-data-grid"
             extraItems={[
-              {
-                ariaLabel: "Mostrar ou minimizar filtros",
-                icon: <Filter size={18} />,
-                onClick: () => dataGridRef.current?.toggleFilters(),
-              },
-              {
-                ariaLabel: "Limpar filtros",
-                icon: <FilterX size={18} />,
-                onClick: () => dataGridRef.current?.clearFilters(),
-              },
               {
                 ariaLabel: enablePagination ? "Desativar paginação" : "Ativar paginação",
                 tooltipContent: <DataGridPaginationTooltipContent locale={locale} enabled={enablePagination} />,

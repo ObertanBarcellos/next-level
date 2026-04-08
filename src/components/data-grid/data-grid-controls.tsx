@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pin, Settings, X } from "lucide-react";
+import { Filter, FilterX, Pin, Settings, X } from "lucide-react";
 import type { DataGridColumn, DataGridLocale } from "./data-grid";
 import { Checkbox } from "../checkbox/checkbox";
 import { Tooltip } from "@/src/components/tooltip";
@@ -19,6 +19,8 @@ export interface DataGridControlsProps<T> {
 	onChangeVisibleColumnIds: (nextIds: string[]) => void;
 	pinnedColumnIds?: string[];
 	onChangePinnedColumnIds?: (nextIds: string[]) => void;
+	onToggleFilters?: () => void;
+	onClearFilters?: () => void;
 	extraItems?: DataGridControlsExtraItem[];
 	tableId?: string;
 	className?: string;
@@ -38,6 +40,8 @@ export function DataGridControls<T>({
 	onChangeVisibleColumnIds,
 	pinnedColumnIds = [],
 	onChangePinnedColumnIds,
+	onToggleFilters,
+	onClearFilters,
 	extraItems,
 	tableId,
 	className,
@@ -56,30 +60,48 @@ export function DataGridControls<T>({
 	const [pinPopoverCoords, setPinPopoverCoords] = useState<{ left: number; top: number } | null>(null);
 	const storageKey = useMemo(() => (tableId ? `data-grid:columns:${tableId}` : null), [tableId]);
 
-	const i18n: Record<DataGridLocale, { tableSettings: string; selectAll: string; close: string; columnsButton: string; pinColumnsButton: string; pinColumnsTitle: string }> = {
+	const i18n: Record<
+		DataGridLocale,
+		{
+			tableSettings: string;
+			selectAll: string;
+			close: string;
+			columnsVisibility: string;
+			pinColumnsButton: string;
+			pinColumnsTitle: string;
+			toggleFilters: string;
+			clearFilters: string;
+		}
+	> = {
 		pt: {
 			tableSettings: "Configurações da tabela",
 			selectAll: "Selecionar todas",
 			close: "Fechar",
-			columnsButton: "Configurações da tabela",
+			columnsVisibility: "Visibilidade de colunas",
 			pinColumnsButton: "Fixar colunas",
 			pinColumnsTitle: "Fixar colunas no início",
+			toggleFilters: "Mostrar ou minimizar filtros",
+			clearFilters: "Limpar filtros",
 		},
 		en: {
 			tableSettings: "Table settings",
 			selectAll: "Select all",
 			close: "Close",
-			columnsButton: "Table settings",
+			columnsVisibility: "Column visibility",
 			pinColumnsButton: "Pin columns",
 			pinColumnsTitle: "Pin columns to start",
+			toggleFilters: "Show or collapse filters",
+			clearFilters: "Clear filters",
 		},
 		es: {
 			tableSettings: "Configuración de la tabla",
 			selectAll: "Seleccionar todas",
 			close: "Cerrar",
-			columnsButton: "Configuración de la tabla",
+			columnsVisibility: "Visibilidad de columnas",
 			pinColumnsButton: "Fijar columnas",
 			pinColumnsTitle: "Fijar columnas al inicio",
+			toggleFilters: "Mostrar u ocultar filtros",
+			clearFilters: "Limpiar filtros",
 		},
 	};
 	const t = i18n[locale] ?? i18n.pt;
@@ -217,7 +239,7 @@ export function DataGridControls<T>({
 		<div className={joinClassNames("relative inline-flex items-center gap-2", className)}>
 			{/* Botão de colunas */}
 			<div ref={triggerWrapperRef} className="inline-flex">
-				<Tooltip content="Visibilidade de Colunas" side="bottom">
+				<Tooltip content={t.columnsVisibility} side="bottom">
 					<button
 						type="button"
 						aria-haspopup="dialog"
@@ -251,7 +273,33 @@ export function DataGridControls<T>({
 				</div>
 			) : null}
 
-			{/* Ícones extras */}
+			{onToggleFilters ? (
+				<Tooltip content={t.toggleFilters} side="bottom">
+					<button
+						type="button"
+						aria-label={t.toggleFilters}
+						onClick={onToggleFilters}
+						className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 active:bg-zinc-100"
+					>
+						<Filter size={iconSize} />
+					</button>
+				</Tooltip>
+			) : null}
+
+			{onClearFilters ? (
+				<Tooltip content={t.clearFilters} side="bottom">
+					<button
+						type="button"
+						aria-label={t.clearFilters}
+						onClick={onClearFilters}
+						className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 active:bg-zinc-100"
+					>
+						<FilterX size={iconSize} />
+					</button>
+				</Tooltip>
+			) : null}
+
+			{/* Ícones extras adicionais */}
 			{extraItems?.map((item, index) => {
 				const content = item.tooltipContent ?? item.ariaLabel;
 				return (
