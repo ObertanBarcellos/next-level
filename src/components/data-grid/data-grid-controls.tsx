@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Settings, X } from "lucide-react";
+import { Pin, Settings, X } from "lucide-react";
 import type { DataGridColumn, DataGridLocale } from "./data-grid";
 import { Checkbox } from "../checkbox/checkbox";
 import { Tooltip } from "@/src/components/tooltip";
-import { DataGridSettingsTooltipContent } from "./data-grid-settings-tooltip";
 
 export interface DataGridControlsExtraItem {
 	icon: React.ReactNode;
@@ -18,6 +17,8 @@ export interface DataGridControlsProps<T> {
 	columns: DataGridColumn<T>[];
 	visibleColumnIds: string[];
 	onChangeVisibleColumnIds: (nextIds: string[]) => void;
+	pinnedColumnIds?: string[];
+	onChangePinnedColumnIds?: (nextIds: string[]) => void;
 	extraItems?: DataGridControlsExtraItem[];
 	tableId?: string;
 	className?: string;
@@ -35,6 +36,8 @@ export function DataGridControls<T>({
 	columns,
 	visibleColumnIds,
 	onChangeVisibleColumnIds,
+	pinnedColumnIds = [],
+	onChangePinnedColumnIds,
 	extraItems,
 	tableId,
 	className,
@@ -44,44 +47,58 @@ export function DataGridControls<T>({
 	locale = "pt",
 }: DataGridControlsProps<T>) {
 	const [open, setOpen] = useState(false);
+	const [pinOpen, setPinOpen] = useState(false);
 	const triggerWrapperRef = useRef<HTMLDivElement | null>(null);
+	const pinTriggerWrapperRef = useRef<HTMLDivElement | null>(null);
 	const popoverRef = useRef<HTMLDivElement | null>(null);
+	const pinPopoverRef = useRef<HTMLDivElement | null>(null);
 	const [popoverCoords, setPopoverCoords] = useState<{ left: number; top: number } | null>(null);
+	const [pinPopoverCoords, setPinPopoverCoords] = useState<{ left: number; top: number } | null>(null);
 	const storageKey = useMemo(() => (tableId ? `data-grid:columns:${tableId}` : null), [tableId]);
 
-	const i18n: Record<DataGridLocale, { tableSettings: string; selectAll: string; close: string; columnsButton: string }> = {
+	const i18n: Record<DataGridLocale, { tableSettings: string; selectAll: string; close: string; columnsButton: string; pinColumnsButton: string; pinColumnsTitle: string }> = {
 		pt: {
 			tableSettings: "Configurações da tabela",
 			selectAll: "Selecionar todas",
 			close: "Fechar",
 			columnsButton: "Configurações da tabela",
+			pinColumnsButton: "Fixar colunas",
+			pinColumnsTitle: "Fixar colunas no início",
 		},
 		en: {
 			tableSettings: "Table settings",
 			selectAll: "Select all",
 			close: "Close",
 			columnsButton: "Table settings",
+			pinColumnsButton: "Pin columns",
+			pinColumnsTitle: "Pin columns to start",
 		},
 		es: {
 			tableSettings: "Configuración de la tabla",
 			selectAll: "Seleccionar todas",
 			close: "Cerrar",
 			columnsButton: "Configuración de la tabla",
+			pinColumnsButton: "Fijar columnas",
+			pinColumnsTitle: "Fijar columnas al inicio",
 		},
 	};
 	const t = i18n[locale] ?? i18n.pt;
 
 	// Fechar ao clicar fora ou em Escape
 	useEffect(() => {
-		if (!open) return;
+		if (!open && !pinOpen) return;
 		const handleClick = (event: MouseEvent) => {
 			const t = event.target as Node | null;
-			if (popoverRef.current?.contains(t as Node)) return;
-			if (triggerWrapperRef.current?.contains(t as Node)) return;
+			if (popoverRef.current?.contains(t as Node) || pinPopoverRef.current?.contains(t as Node)) return;
+			if (triggerWrapperRef.current?.contains(t as Node) || pinTriggerWrapperRef.current?.contains(t as Node)) return;
 			setOpen(false);
+			setPinOpen(false);
 		};
 		const handleKey = (event: KeyboardEvent) => {
-			if (event.key === "Escape") setOpen(false);
+			if (event.key === "Escape") {
+				setOpen(false);
+				setPinOpen(false);
+			}
 		};
 		document.addEventListener("mousedown", handleClick);
 		document.addEventListener("keydown", handleKey);
@@ -89,39 +106,45 @@ export function DataGridControls<T>({
 			document.removeEventListener("mousedown", handleClick);
 			document.removeEventListener("keydown", handleKey);
 		};
-	}, [open]);
+	}, [open, pinOpen]);
+
+	const getPopoverCoords = (triggerNode: HTMLDivElement | null, currentPopoverRef: HTMLDivElement | null) => {
+		if (!triggerNode) return null;
+		const MARGIN = 8;
+		const rect = triggerNode.getBoundingClientRect();
+		const popoverHeight = currentPopoverRef?.offsetHeight ?? 0;
+		const viewportW = window.innerWidth;
+		const viewportH = window.innerHeight;
+		const preferRight = viewportW - rect.right >= popoverWidth + MARGIN;
+		const preferLeft = rect.left >= popoverWidth + MARGIN;
+		let left = 0;
+		if (preferRight) {
+			left = Math.min(viewportW - MARGIN - popoverWidth, rect.right + MARGIN);
+		} else if (preferLeft) {
+			left = Math.max(MARGIN, rect.left - MARGIN - popoverWidth);
+		} else if (viewportW - rect.right >= rect.left) {
+			left = Math.min(viewportW - MARGIN - popoverWidth, rect.right + MARGIN);
+		} else {
+			left = Math.max(MARGIN, rect.left - MARGIN - popoverWidth);
+		}
+		const triggerCenterY = rect.top + rect.height / 2;
+		let top = Math.round(triggerCenterY - (popoverHeight > 0 ? popoverHeight / 2 : 0));
+		top = Math.max(MARGIN, Math.min(top, viewportH - MARGIN - (popoverHeight > 0 ? popoverHeight : 0)));
+		return { left, top };
+	};
 
 	// Posicionamento: abre ao lado (direita preferencial; cai para esquerda se não couber)
 	useEffect(() => {
-		if (!open) return;
-		const MARGIN = 8;
+		if (!open && !pinOpen) return;
 		const updatePosition = () => {
-			if (!triggerWrapperRef.current) return;
-			const rect = triggerWrapperRef.current.getBoundingClientRect();
-			// Tenta medir a altura atual do popover (após render)
-			const popoverHeight = popoverRef.current?.offsetHeight ?? 0;
-			const viewportW = window.innerWidth;
-			const viewportH = window.innerHeight;
-			const preferRight = viewportW - rect.right >= popoverWidth + MARGIN;
-			const preferLeft = rect.left >= popoverWidth + MARGIN;
-			let left = 0;
-			if (preferRight) {
-				left = Math.min(viewportW - MARGIN - popoverWidth, rect.right + MARGIN);
-			} else if (preferLeft) {
-				left = Math.max(MARGIN, rect.left - MARGIN - popoverWidth);
-			} else {
-				// Não cabe totalmente de nenhum lado: encosta no lado com mais espaço
-				if (viewportW - rect.right >= rect.left) {
-					left = Math.min(viewportW - MARGIN - popoverWidth, rect.right + MARGIN);
-				} else {
-					left = Math.max(MARGIN, rect.left - MARGIN - popoverWidth);
-				}
+			if (open) {
+				const coords = getPopoverCoords(triggerWrapperRef.current, popoverRef.current);
+				if (coords) setPopoverCoords(coords);
 			}
-			// Alinha verticalmente ao centro do botão e ajusta para caber na viewport
-			const triggerCenterY = rect.top + rect.height / 2;
-			let top = Math.round(triggerCenterY - (popoverHeight > 0 ? popoverHeight / 2 : 0));
-			top = Math.max(MARGIN, Math.min(top, viewportH - MARGIN - (popoverHeight > 0 ? popoverHeight : 0)));
-			setPopoverCoords({ left, top });
+			if (pinOpen) {
+				const coords = getPopoverCoords(pinTriggerWrapperRef.current, pinPopoverRef.current);
+				if (coords) setPinPopoverCoords(coords);
+			}
 		};
 		// Primeiro cálculo
 		updatePosition();
@@ -135,7 +158,7 @@ export function DataGridControls<T>({
 			window.removeEventListener("scroll", updatePosition, true);
 			cancelAnimationFrame(raf);
 		};
-	}, [open, popoverWidth]);
+	}, [open, pinOpen, popoverWidth]);
 
 	// Carrega preferências do localStorage ao montar/alterar tableId ou colunas
 	useEffect(() => {
@@ -180,6 +203,12 @@ export function DataGridControls<T>({
 	const toggleAll = () => {
 		onChangeVisibleColumnIds(allChecked ? [allIds[0]].filter(Boolean) : allIds);
 	};
+	const togglePinnedId = (id: string) => {
+		if (!onChangePinnedColumnIds) return;
+		const isPinned = pinnedColumnIds.includes(id);
+		const next = isPinned ? pinnedColumnIds.filter((x) => x !== id) : [...pinnedColumnIds, id];
+		onChangePinnedColumnIds(next);
+	};
 
 	const maxHeightItemCount = Math.max(1, popoverMaxVisibleItems);
 	const showScroll = columns.length > maxHeightItemCount;
@@ -188,7 +217,7 @@ export function DataGridControls<T>({
 		<div className={joinClassNames("relative inline-flex items-center gap-2", className)}>
 			{/* Botão de colunas */}
 			<div ref={triggerWrapperRef} className="inline-flex">
-				<Tooltip content={<DataGridSettingsTooltipContent locale={locale} />} side="bottom">
+				<Tooltip content="Visibilidade de Colunas" side="bottom">
 					<button
 						type="button"
 						aria-haspopup="dialog"
@@ -200,6 +229,27 @@ export function DataGridControls<T>({
 					</button>
 				</Tooltip>
 			</div>
+
+			{/* Ícones extras */}
+			{onChangePinnedColumnIds ? (
+				<div ref={pinTriggerWrapperRef} className="inline-flex">
+					<Tooltip content={t.pinColumnsButton} side="bottom">
+						<button
+							type="button"
+							aria-haspopup="dialog"
+							aria-label={t.pinColumnsButton}
+							aria-expanded={pinOpen}
+							onClick={() => {
+								setPinOpen((v) => !v);
+								setOpen(false);
+							}}
+							className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 active:bg-zinc-100"
+						>
+							<Pin size={iconSize} />
+						</button>
+					</Tooltip>
+				</div>
+			) : null}
 
 			{/* Ícones extras */}
 			{extraItems?.map((item, index) => {
@@ -274,6 +324,59 @@ export function DataGridControls<T>({
 										aria-label={`${col.header}`}
 										checked={checked}
 										onCheckedChange={() => toggleId(id)}
+									/>
+								</div>
+							);
+						})}
+					</div>
+				</div>
+			) : null}
+
+			{/* Popover de fixar colunas (sem selecionar todas) */}
+			{pinOpen && onChangePinnedColumnIds ? (
+				<div
+					ref={pinPopoverRef}
+					role="dialog"
+					aria-label={t.pinColumnsTitle}
+					className="fixed z-[1000] w-[var(--popover-w)] rounded-md border border-zinc-200 bg-white p-2 shadow-lg"
+					style={
+						{
+							"--popover-w": `${popoverWidth}px`,
+							left: pinPopoverCoords?.left ?? -9999,
+							top: pinPopoverCoords?.top ?? -9999,
+						} as React.CSSProperties
+					}
+				>
+					<div className="mb-2 flex items-center justify-between">
+						<span className="text-sm font-semibold text-zinc-800">{t.pinColumnsTitle}</span>
+						<button
+							type="button"
+							aria-label={t.close}
+							onClick={() => setPinOpen(false)}
+							className="inline-flex h-7 w-7 items-center justify-center rounded hover:bg-zinc-100"
+						>
+							<X size={16} />
+						</button>
+					</div>
+
+					<div
+						className={joinClassNames(
+							"flex flex-col gap-1",
+							showScroll ? "max-h-[calc(10*2.25rem)] overflow-y-auto pr-1" : undefined
+						)}
+					>
+						{columns.map((col) => {
+							const id = String(col.id);
+							const checked = pinnedColumnIds.includes(id);
+							return (
+								<div key={`pin-${id}`} className="flex items-center justify-between rounded-md border border-zinc-200 p-2">
+									<span className="truncate text-sm text-zinc-700">
+										{col.header}
+									</span>
+									<Checkbox
+										aria-label={`Fixar ${col.header}`}
+										checked={checked}
+										onCheckedChange={() => togglePinnedId(id)}
 									/>
 								</div>
 							);

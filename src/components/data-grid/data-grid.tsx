@@ -65,6 +65,7 @@ export interface DataGridRowContextAction<T> {
 export interface DataGridProps<T> {
   data: T[];
   columns: DataGridColumn<T>[];
+  pinnedColumnIds?: string[];
   layoutMode?: DataGridLayoutMode;
   rowHeight?: number;
   overscan?: number;
@@ -247,6 +248,48 @@ function resolveMinWidth(minWidth?: number | string) {
   }
 
   return undefined;
+}
+
+function extractPixelWidth(value?: number | string) {
+  if (typeof value === "number") {
+    return value;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+  const pxMatch = /^([0-9]+(?:\.[0-9]+)?)px$/.exec(normalized);
+  if (pxMatch) {
+    return Number(pxMatch[1]);
+  }
+
+  const minMaxPxMatch = /^minmax\(\s*([0-9]+(?:\.[0-9]+)?)px\s*,/.exec(normalized);
+  if (minMaxPxMatch) {
+    return Number(minMaxPxMatch[1]);
+  }
+
+  return null;
+}
+
+function resolvePinnedColumnWidth(width?: number | string, minWidth?: number | string) {
+  const widthPx = extractPixelWidth(width);
+  const minWidthPx = extractPixelWidth(minWidth);
+
+  if (widthPx !== null && minWidthPx !== null) {
+    return Math.max(widthPx, minWidthPx);
+  }
+
+  if (widthPx !== null) {
+    return widthPx;
+  }
+
+  if (minWidthPx !== null) {
+    return minWidthPx;
+  }
+
+  return 160;
 }
 
 function resolveColumnWidthByLayout(layoutMode: DataGridLayoutMode, width?: number | string, minWidth?: number | string) {
@@ -490,10 +533,49 @@ function defaultMatchesFilter(candidateValue: DataGridFilterValue, filterValue: 
   return candidateText.toLocaleLowerCase().includes(filterText.toLocaleLowerCase());
 }
 
+function resolveFilterCandidateValue(value: DataGridCellValue): DataGridFilterValue {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+
+  if (value instanceof Date) {
+    return value;
+  }
+
+  if (typeof value === "object") {
+    if (isImageCell(value)) {
+      return value.alt ?? value.src;
+    }
+
+    if (isIconArrayCell(value)) {
+      return value.icons.length;
+    }
+
+    if (!Array.isArray(value)) {
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value);
+      }
+    }
+  }
+
+  return String(value);
+}
+
 function DataGridInner<T>(
   {
   data,
   columns,
+  pinnedColumnIds = [],
   layoutMode = "balanced",
   rowHeight = 44,
   overscan = 6,
@@ -518,6 +600,7 @@ function DataGridInner<T>(
   } | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
+  const [scrollResetVersion, setScrollResetVersion] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [scrollbarWidth, setScrollbarWidth] = useState(0);
   const [resizingColumnId, setResizingColumnId] = useState<ColumnId | null>(null);
@@ -541,6 +624,11 @@ function DataGridInner<T>(
     setOrderedColumns(columns);
   }, [columns]);
 
+  const pinnedColumnIdSet = useMemo(() => {
+    const available = new Set(columns.map((column) => String(column.id)));
+    return new Set(pinnedColumnIds.filter((id) => available.has(String(id))));
+  }, [columns, pinnedColumnIds]);
+
   useEffect(() => {
     const node = viewportRef.current;
     if (!node) {
@@ -563,6 +651,16 @@ function DataGridInner<T>(
 
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (scrollResetVersion === 0) {
+      return;
+    }
+    const viewportNode = viewportRef.current;
+    if (viewportNode) {
+      viewportNode.scrollTop = 0;
+    }
+  }, [scrollResetVersion]);
 
   useEffect(() => {
     if (!resizingColumnId) {
@@ -681,10 +779,10 @@ function DataGridInner<T>(
           return column.matchesFilter(row, rowIndex, filterValue);
         }
 
-        const candidate = column.getFilterValue
+        const candidate: DataGridFilterValue = column.getFilterValue
           ? column.getFilterValue(row, rowIndex)
           : column.getValue
-            ? column.getValue(row, rowIndex)
+            ? resolveFilterCandidateValue(column.getValue(row, rowIndex))
             : null;
 
         return defaultMatchesFilter(candidate, filterValue, collator);
@@ -729,18 +827,36 @@ function DataGridInner<T>(
     : sortedData.length;
   const pageData = enablePagination ? sortedData.slice(pageStartIndex, pageEndExclusive) : sortedData;
 
+  const displayColumns = useMemo(() => {
+    const pinned = orderedColumns.filter((column) => pinnedColumnIdSet.has(String(column.id)));
+    const normal = orderedColumns.filter((column) => !pinnedColumnIdSet.has(String(column.id)));
+    return [...pinned, ...normal];
+  }, [orderedColumns, pinnedColumnIdSet]);
   const gridTemplateColumns = useMemo(
-    () => orderedColumns.map((column) => resolveColumnWidthByLayout(layoutMode, column.width, column.minWidth)).join(" "),
-    [layoutMode, orderedColumns]
+    () => displayColumns.map((column) => resolveColumnWidthByLayout(layoutMode, column.width, column.minWidth)).join(" "),
+    [displayColumns, layoutMode]
   );
   const gridTrackWidths = useMemo(
-    () => orderedColumns.map((column) => resolveColumnWidthByLayout(layoutMode, column.width, column.minWidth)),
-    [layoutMode, orderedColumns]
+    () => displayColumns.map((column) => resolveColumnWidthByLayout(layoutMode, column.width, column.minWidth)),
+    [displayColumns, layoutMode]
   );
   const resolvedFixedTrackWidths = useMemo(
-    () => orderedColumns.map((column) => resolveColumnWidth(column.width)),
-    [orderedColumns]
+    () => displayColumns.map((column) => resolveColumnWidth(column.width)),
+    [displayColumns]
   );
+  const pinnedColumnOffsets = useMemo(() => {
+    const offsets: Record<string, number> = {};
+    let accumulated = 0;
+    for (const column of displayColumns) {
+      const id = String(column.id);
+      if (!pinnedColumnIdSet.has(id)) {
+        continue;
+      }
+      offsets[id] = accumulated;
+      accumulated += resolvePinnedColumnWidth(column.width, column.minWidth);
+    }
+    return offsets;
+  }, [displayColumns, pinnedColumnIdSet]);
   const gridContentWidth = useMemo(() => {
     if (layoutMode !== "custom") {
       return "100%";
@@ -799,6 +915,11 @@ function DataGridInner<T>(
     });
   };
 
+  const resetViewportToTop = () => {
+    setScrollTop(0);
+    setScrollResetVersion((current) => current + 1);
+  };
+
   return (
     <div className={joinClassNames(mergedClassNames.root, className)}>
       <div className={mergedClassNames.headerWrapper} style={{ paddingRight: scrollbarWidth }}>
@@ -811,9 +932,11 @@ function DataGridInner<T>(
             transform: `translateX(-${scrollLeft}px)`,
           }}
         >
-          {orderedColumns.map((column) => {
+          {displayColumns.map((column) => {
             const isDragging = draggingColumnId === column.id;
             const isDragOver = dragOverColumnId === column.id;
+            const pinnedOffset = pinnedColumnOffsets[String(column.id)];
+            const isPinnedColumn = pinnedOffset !== undefined;
 
             return (
               <div
@@ -868,16 +991,22 @@ function DataGridInner<T>(
                     };
                   });
                   setCurrentPage(1);
-                  setScrollTop(0);
-                  if (viewportRef.current) {
-                    viewportRef.current.scrollTop = 0;
-                  }
+                  resetViewportToTop();
                 }}
                 className={joinClassNames(
                   mergedClassNames.headerCell,
                   isDragOver && "bg-zinc-200/70",
                   isDragging && "cursor-grabbing opacity-70"
                 )}
+                style={
+                  isPinnedColumn
+                    ? {
+                        transform: `translateX(${scrollLeft}px)`,
+                        zIndex: 40,
+                        backgroundColor: isDragOver ? "rgb(228 228 231)" : "rgb(244 244 245)",
+                      }
+                    : undefined
+                }
               >
                 <span className="flex min-w-0 items-center gap-1">
                   <span className="truncate">{column.header}</span>
@@ -931,15 +1060,29 @@ function DataGridInner<T>(
                 transform: `translateX(-${scrollLeft}px)`,
               }}
             >
-              {orderedColumns.map((column) => {
+              {displayColumns.map((column) => {
                 const currentFilterValue = filterValuesByColumn[column.id];
                 const hasFilterValue =
                   currentFilterValue !== null &&
                   currentFilterValue !== undefined &&
                   !(typeof currentFilterValue === "string" && currentFilterValue.trim().length === 0);
+                const pinnedOffset = pinnedColumnOffsets[String(column.id)];
+                const isPinnedColumn = pinnedOffset !== undefined;
 
                 return (
-                  <div key={`${column.id}-filter`} className={mergedClassNames.filterCell}>
+                  <div
+                    key={`${column.id}-filter`}
+                    className={mergedClassNames.filterCell}
+                    style={
+                      isPinnedColumn
+                        ? {
+                            transform: `translateX(${scrollLeft}px)`,
+                            zIndex: 35,
+                            backgroundColor: "rgb(250 250 250)",
+                          }
+                        : undefined
+                    }
+                  >
                     {column.renderFilter ? (
                       column.renderFilter({
                         column,
@@ -950,10 +1093,7 @@ function DataGridInner<T>(
                             [column.id]: nextValue,
                           }));
                           setCurrentPage(1);
-                          setScrollTop(0);
-                          if (viewportRef.current) {
-                            viewportRef.current.scrollTop = 0;
-                          }
+                          resetViewportToTop();
                         },
                         clear: () => {
                           setFilterValuesByColumn((current) => ({
@@ -961,10 +1101,7 @@ function DataGridInner<T>(
                             [column.id]: undefined,
                           }));
                           setCurrentPage(1);
-                          setScrollTop(0);
-                          if (viewportRef.current) {
-                            viewportRef.current.scrollTop = 0;
-                          }
+                          resetViewportToTop();
                         },
                       })
                     ) : column.filterable ? (
@@ -981,10 +1118,7 @@ function DataGridInner<T>(
                               [column.id]: nextValue,
                             }));
                             setCurrentPage(1);
-                            setScrollTop(0);
-                            if (viewportRef.current) {
-                              viewportRef.current.scrollTop = 0;
-                            }
+                            resetViewportToTop();
                           }}
                           className={mergedClassNames.filterInput}
                           aria-label={mergedTranslations.filterInputAriaLabel(column.header)}
@@ -1001,10 +1135,7 @@ function DataGridInner<T>(
                                 [column.id]: undefined,
                               }));
                               setCurrentPage(1);
-                              setScrollTop(0);
-                              if (viewportRef.current) {
-                                viewportRef.current.scrollTop = 0;
-                              }
+                              resetViewportToTop();
                             }}
                           >
                             ×
@@ -1077,7 +1208,7 @@ function DataGridInner<T>(
                   width: gridContentWidth,
                 }}
               >
-                {orderedColumns.map((column) => {
+                {displayColumns.map((column) => {
                   const cellValue = getCellValue(column, row, rowIndex);
                   const content = renderCellContent(column, row, rowIndex, {
                     numberLocale,
@@ -1087,6 +1218,9 @@ function DataGridInner<T>(
                   const isNumericColumn = column.type === "number" || isNumericValue(cellValue as React.ReactNode);
                   const isFlexibleCell =
                     column.type === "image" || column.type === "icon-array" || column.type === "custom";
+                  const pinnedOffset = pinnedColumnOffsets[String(column.id)];
+                  const isPinnedColumn = pinnedOffset !== undefined;
+                  const stripedBackground = rowIndexInPage % 2 === 0 ? "#ffffff" : "rgb(250 250 250)";
 
                   return (
                     <div
@@ -1096,6 +1230,16 @@ function DataGridInner<T>(
                         isFlexibleCell ? "" : "truncate",
                         isNumericColumn ? "text-right tabular-nums" : ""
                       )}
+                      style={
+                        isPinnedColumn
+                          ? {
+                              position: "sticky",
+                              left: pinnedOffset,
+                              zIndex: 20,
+                              backgroundColor: stripedBackground,
+                            }
+                          : undefined
+                      }
                     >
                       {content}
                     </div>
@@ -1152,10 +1296,7 @@ function DataGridInner<T>(
               size="sm"
               onClick={() => {
                 setCurrentPage((page) => Math.max(1, page - 1));
-                setScrollTop(0);
-                if (viewportRef.current) {
-                  viewportRef.current.scrollTop = 0;
-                }
+                resetViewportToTop();
               }}
               disabled={currentPage <= 1}
               className={joinClassNames(
@@ -1172,10 +1313,7 @@ function DataGridInner<T>(
               size="sm"
               onClick={() => {
                 setCurrentPage((page) => Math.min(totalPages, page + 1));
-                setScrollTop(0);
-                if (viewportRef.current) {
-                  viewportRef.current.scrollTop = 0;
-                }
+                resetViewportToTop();
               }}
               disabled={currentPage >= totalPages}
               className={joinClassNames(
@@ -1192,8 +1330,11 @@ function DataGridInner<T>(
   );
 }
 
-export const DataGrid = forwardRef(DataGridInner) as <T>(
-  props: DataGridProps<T> & { ref?: React.Ref<DataGridRef> }
-) => React.ReactElement;
+type DataGridComponent = {
+  <T>(props: DataGridProps<T> & { ref?: React.Ref<DataGridRef> }): React.ReactElement;
+  displayName?: string;
+};
+
+export const DataGrid = forwardRef(DataGridInner) as DataGridComponent;
 
 DataGrid.displayName = "DataGrid";

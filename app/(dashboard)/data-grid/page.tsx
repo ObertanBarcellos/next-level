@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   DataGrid,
   type DataGridColumn,
@@ -11,7 +11,7 @@ import { DataGridControls } from "@/src/components/data-grid/data-grid-controls"
 import { DataGridPaginationTooltipContent } from "@/src/components/data-grid/data-grid-pagination-tooltip";
 import { DateRangePicker, type CalendarLanguage, type DateRangeValue } from "@/src/components/calendar/calendar";
 import { Button } from "@/src/components/button/button";
-import { Bell, CircleCheck, List, Lock, Shield, TriangleAlert } from "lucide-react";
+import { Bell, CircleCheck, Filter, FilterX, List, Lock, Shield, TriangleAlert } from "lucide-react";
 import { useToast } from "@/src/components/toast";
 
 interface GridRow {
@@ -50,7 +50,7 @@ export default function DataGridPage() {
 
   const rows = useMemo<GridRow[]>(
     () =>
-      Array.from({ length: 100000 }, (_, index) => ({
+      Array.from({ length: 200000 }, (_, index) => ({
         id: index + 1,
         avatarUrl: `https://i.pravatar.cc/80?img=${(index % 70) + 1}`,
         name: `Usuario ${index + 1}`,
@@ -223,22 +223,25 @@ export default function DataGridPage() {
   );
 
   // Controle de colunas visíveis para integrar com o componente externo
-  const [visibleColumnIds, setVisibleColumnIds] = useState<string[]>([]);
-
-  // Sincroniza ids visíveis ao mudar definição das colunas
-  useEffect(() => {
-    setVisibleColumnIds((prev) => {
-      const nextAll = columns.map((c) => String(c.id));
-      // Se ainda não inicializado, ou houve mudança estrutural grande, reseta para todas
-      if (prev.length === 0) return nextAll;
-      const filtered = prev.filter((id) => nextAll.includes(id));
-      return filtered.length > 0 ? filtered : nextAll;
-    });
-  }, [columns]);
+  const [visibleColumnIds, setVisibleColumnIds] = useState<string[] | null>(null);
+  const [pinnedColumnIds, setPinnedColumnIds] = useState<string[]>([]);
+  const allColumnIds = useMemo(() => columns.map((c) => String(c.id)), [columns]);
+  const allowedColumnIds = useMemo(() => new Set(allColumnIds), [allColumnIds]);
+  const resolvedVisibleColumnIds = useMemo(() => {
+    if (visibleColumnIds === null || visibleColumnIds.length === 0) {
+      return allColumnIds;
+    }
+    const filtered = visibleColumnIds.filter((id) => allowedColumnIds.has(id));
+    return filtered.length > 0 ? filtered : allColumnIds;
+  }, [allColumnIds, allowedColumnIds, visibleColumnIds]);
+  const resolvedPinnedColumnIds = useMemo(
+    () => pinnedColumnIds.filter((id) => allowedColumnIds.has(id)),
+    [allowedColumnIds, pinnedColumnIds]
+  );
 
   const visibleColumns = useMemo(
-    () => columns.filter((c) => visibleColumnIds.includes(String(c.id))),
-    [columns, visibleColumnIds]
+    () => columns.filter((c) => resolvedVisibleColumnIds.includes(String(c.id))),
+    [columns, resolvedVisibleColumnIds]
   );
 
   return (
@@ -258,13 +261,6 @@ export default function DataGridPage() {
         </p>
         <p className="mt-1 text-xs text-zinc-500">Use o menu de contexto da linha (botao direito) para testar os toasts.</p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" tone="neutral" size="sm" onClick={() => dataGridRef.current?.toggleFilters()}>
-            Mostrar/ocultar filtros
-          </Button>
-          <Button type="button" variant="outline" tone="neutral" size="sm" onClick={() => dataGridRef.current?.clearFilters()}>
-            Limpar filtros
-          </Button>
-          <div className="mx-2 h-5 w-px bg-zinc-200" />
           <span className="text-xs font-medium text-zinc-600">Idioma:</span>
           {(["pt", "en", "es"] as const).map((option) => (
             <Button
@@ -283,11 +279,23 @@ export default function DataGridPage() {
           {/* Controles externos do DataGrid (pode ser movido para qualquer lugar da página) */}
           <DataGridControls
             columns={columns}
-            visibleColumnIds={visibleColumnIds}
-            onChangeVisibleColumnIds={setVisibleColumnIds}
+            visibleColumnIds={resolvedVisibleColumnIds}
+            onChangeVisibleColumnIds={(nextIds) => setVisibleColumnIds(nextIds)}
+            pinnedColumnIds={resolvedPinnedColumnIds}
+            onChangePinnedColumnIds={setPinnedColumnIds}
             locale={locale}
             tableId="demo-data-grid"
             extraItems={[
+              {
+                ariaLabel: "Mostrar ou minimizar filtros",
+                icon: <Filter size={18} />,
+                onClick: () => dataGridRef.current?.toggleFilters(),
+              },
+              {
+                ariaLabel: "Limpar filtros",
+                icon: <FilterX size={18} />,
+                onClick: () => dataGridRef.current?.clearFilters(),
+              },
               {
                 ariaLabel: enablePagination ? "Desativar paginação" : "Ativar paginação",
                 tooltipContent: <DataGridPaginationTooltipContent locale={locale} enabled={enablePagination} />,
@@ -317,6 +325,7 @@ export default function DataGridPage() {
           ref={dataGridRef}
           data={rows}
           columns={visibleColumns}
+          pinnedColumnIds={resolvedPinnedColumnIds}
           rowHeight={42}
           layoutMode="custom"
           locale={locale}
